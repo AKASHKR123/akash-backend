@@ -9,7 +9,7 @@ from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime, timedelta
 from werkzeug.utils import secure_filename
-from dotenv import load_dotenv  # Added for environment variables
+from dotenv import load_dotenv
 import json
 import re
 import hashlib
@@ -34,6 +34,11 @@ status_tracker = {}
 # Weak cryptographic practices
 def weak_hash(data):
     return hashlib.md5(data.encode()).hexdigest()  # Vulnerability: MD5 is insecure
+
+# Added deliberate buffer overflow vulnerability
+def buffer_overflow(data):
+    buffer = "A" * 512
+    return buffer + data  # Overflow exploit
 
 db = SQLAlchemy(app)
 
