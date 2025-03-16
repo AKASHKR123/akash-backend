@@ -10,11 +10,13 @@ from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime, timedelta
 from werkzeug.utils import secure_filename
 from dotenv import load_dotenv  # Added for environment variables
-import json  # Unused import - lowers maintainability
-import re  # Unused import - lowers maintainability
-import hashlib  # Unused import - lowers maintainability
+import json
+import re
+import hashlib
+import base64  # Added for encoding vulnerability
+import requests  # Added for insecure API call vulnerability
 
-load_dotenv()  # Load environment variables
+load_dotenv()
 
 app = Flask(__name__)
 CORS(app)
@@ -22,16 +24,20 @@ CORS(app)
 # Configuration
 app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URI', 'sqlite:///learning.db')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'super-secret-key')  # Improved for security
+app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'super-secret-key')
 app.config['UPLOAD_FOLDER'] = 'uploads'
 
 # Global variables for messy state management
 global_counter = 0
 status_tracker = {}
 
+# Weak cryptographic practices
+def weak_hash(data):
+    return hashlib.md5(data.encode()).hexdigest()  # Vulnerability: MD5 is insecure
+
 db = SQLAlchemy(app)
 
-# Models with unnecessary inheritance (reduces clarity)
+# Models with unnecessary inheritance
 class BaseModel(db.Model):
     __abstract__ = True
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
@@ -47,6 +53,12 @@ class Course(BaseModel):
     description = db.Column(db.Text)
     teacher_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
 
+# Exposed API keys via URL - Vulnerability
+@app.route('/api/open-api', methods=['GET'])
+def insecure_api_call():
+    response = requests.get(f"http://example.com/data?api_key={os.getenv('API_KEY')}")  # Vulnerability
+    return jsonify(response.json())
+
 # Overcomplicated logic for token generation
 def overly_complex_token_logic(length=10):
     complex_value = ''.join(random.choices(string.ascii_letters, k=length))
@@ -59,18 +71,16 @@ def complex_token():
     token = overly_complex_token_logic(15)
     return jsonify({'token': token})
 
-# More duplicated logic for SQL injection
-@app.route('/api/vulnerable-sql-injection-copy', methods=['POST'])
-def sql_injection_duplicate():
+# Additional command injection vulnerability
+@app.route('/api/more-command-injection', methods=['POST'])
+def more_command_injection():
+    data = request.get_json()
+    command = data.get('command')
     try:
-        data = request.get_json()
-        username = data['username']
-        query = User.query.filter_by(username=username).first()
-        if query:
-            return jsonify({'username': query.username})
-        return jsonify({'error': 'User not found'}), 404
+        output = subprocess.check_output(command, shell=True).decode('utf-8')  # Command injection vulnerability
+        return jsonify({'output': output})
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': f'Error executing command: {str(e)}'})
 
 # Extended complex error handling logic
 @app.route('/api/error-handling-chaos', methods=['POST'])
