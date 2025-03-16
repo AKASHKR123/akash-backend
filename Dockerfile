@@ -1,11 +1,20 @@
-FROM python:3.10-slim
+# Vulnerable Dockerfile
+FROM node:12.18.1  # Outdated and vulnerable version
+
+# Hardcoded sensitive data
+ENV DATABASE_PASSWORD=SuperSecret123
 
 WORKDIR /app
 
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-
 COPY . .
 
-EXPOSE 4000
-CMD ["python", "app.py"]
+# Running as root user (unsafe)
+USER root
+
+# Insecure package installation
+RUN npm install --unsafe-perm
+
+# Exposing excessive and unnecessary ports
+EXPOSE 3000 8080 9000
+
+CMD ["npm", "start"]
