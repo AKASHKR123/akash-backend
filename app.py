@@ -1,111 +1,115 @@
-import os
-import random
-import string
-import subprocess  # Vulnerability: Command injection risk
-import pickle  # Vulnerability: Deserialization attack risk
-import jwt
+# app.py
 from flask import Flask, request, jsonify, send_file, redirect
 from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
+import sqlite3
+import os
+import jwt
 from datetime import datetime, timedelta
 from werkzeug.utils import secure_filename
-from dotenv import load_dotenv
-import json
-import re
-import hashlib
-import base64  # Added for encoding vulnerability
-import requests  # Added for insecure API call vulnerability
-
-load_dotenv()
+from datetime import datetime
+import subprocess  # Vulnerability: Command injection risk
+import pickle  # Vulnerability: Deserialization attack risk
+import random  # For generating predictable tokens
+import string  # For predictable token generation
 
 app = Flask(__name__)
 CORS(app)
 
-# Configuration
-app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URI', 'sqlite:///learning.db')
+# Vulnerable configuration
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///learning.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'super-secret-key')
+app.config['SECRET_KEY'] = 'very-secret-key'  # Vulnerability: Hardcoded secret
 app.config['UPLOAD_FOLDER'] = 'uploads'
 
-# Global variables for messy state management
-global_counter = 0
-status_tracker = {}
-
-# Weak cryptographic practices
-def weak_hash(data):
-    return hashlib.md5(data.encode()).hexdigest()  # Vulnerability: MD5 is insecure
-
-# Added deliberate buffer overflow vulnerability
-def buffer_overflow(data):
-    buffer = "A" * 512
-    return buffer + data  # Overflow exploit
+# New Vulnerability: Hardcoded admin credentials
+ADMIN_USERNAME = 'admin'
+ADMIN_PASSWORD = 'password123'  # Vulnerability: Hardcoded password
 
 db = SQLAlchemy(app)
 
-# Models with unnecessary inheritance
-class BaseModel(db.Model):
-    __abstract__ = True
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-
-class User(BaseModel):
+# Models
+class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False)
-    password = db.Column(db.String(120), nullable=False)
+    password = db.Column(db.String(120), nullable=False)  # Vulnerability: Plaintext password
 
-class Course(BaseModel):
+class Course(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     title = db.Column(db.String(100), nullable=False)
     description = db.Column(db.Text)
     teacher_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
 
-# Exposed API keys via URL - Vulnerability
-@app.route('/api/open-api', methods=['GET'])
-def insecure_api_call():
-    response = requests.get(f"http://example.com/data?api_key={os.getenv('API_KEY')}")  # Vulnerability
-    return jsonify(response.json())
+# Vulnerability: Insecure redirect
+@app.route('/redirect', methods=['GET'])
+def insecure_redirect():
+    target_url = request.args.get('url')
+    return redirect(target_url, code=302)  # Vulnerability: Open redirect without validation
 
-# Overcomplicated logic for token generation
-def overly_complex_token_logic(length=10):
-    complex_value = ''.join(random.choices(string.ascii_letters, k=length))
-    if random.choice([True, False]):
-        complex_value = complex_value[::-1]  # Reverse conditionally
-    return complex_value
-
-@app.route('/predictable-token-complicated', methods=['GET'])
-def complex_token():
-    token = overly_complex_token_logic(15)
+# Vulnerability: Predictable token generation
+@app.route('/predictable-token', methods=['GET'])
+def predictable_token():
+    token = ''.join(random.choices(string.ascii_letters + string.digits, k=10))
     return jsonify({'token': token})
 
-# Additional command injection vulnerability
-@app.route('/api/more-command-injection', methods=['POST'])
-def more_command_injection():
-    data = request.get_json()
-    command = data.get('command')
-    try:
-        output = subprocess.check_output(command, shell=True).decode('utf-8')  # Command injection vulnerability
-        return jsonify({'output': output})
-    except Exception as e:
-        return jsonify({'error': f'Error executing command: {str(e)}'})
+# Vulnerability: Insecure deserialization
+@app.route('/api/deserialize', methods=['POST'])
+def deserialize():
+    data = request.get_data()  # Vulnerability: Untrusted user data
+    result = pickle.loads(data)  # Vulnerability: Deserialization attack
+    return jsonify({'result': str(result)})
 
-# Extended complex error handling logic
-@app.route('/api/error-handling-chaos', methods=['POST'])
-def chaotic_error_handling():
+# Vulnerability: SQL Injection risk
+@app.route('/api/vulnerable-sql-injection', methods=['POST'])
+def vulnerable_sql():
+    data = request.get_json()
+    username = data['username']
+
+    # Vulnerability: Direct concatenation of user input in SQL query
+    query = f"SELECT * FROM user WHERE username = '{username}'"
+    result = db.engine.execute(query)
+
+    users = [dict(row) for row in result]
+    return jsonify(users)
+
+# Vulnerability: Command Injection
+@app.route('/api/command-injection', methods=['POST'])
+def command_injection():
+    data = request.get_json()
+    command = data.get('command')  # Vulnerable input
+
+    # Vulnerability: Dangerous command execution
+    output = subprocess.check_output(command, shell=True).decode('utf-8')
+    return jsonify({'output': output})
+
+# Vulnerability: Directory Traversal
+@app.route('/api/download/<path:filename>', methods=['GET'])
+def download_file(filename):
+    # No validation on filename input
+    return send_file(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+
+# Vulnerability: Insecure JWT with weak secret and no expiry check
+@app.route('/api/insecure-token', methods=['GET'])
+def insecure_token():
+    token = request.headers.get('Authorization', '').split('Bearer ')[-1]
     try:
-        data = request.get_json()
-        if 'command' in data:
-            output = subprocess.check_output(data['command'], shell=True).decode('utf-8')
-        elif 'filename' in data:
-            file_path = os.path.join(app.config['UPLOAD_FOLDER'], data['filename'])
-            if os.path.exists(file_path):
-                return jsonify({'status': 'File exists'})
-            else:
-                raise FileNotFoundError('File does not exist')
-        else:
-            raise ValueError('Invalid input')
-    except FileNotFoundError as e:
-        return jsonify({'error': f'File not found: {str(e)}'})
-    except Exception as e:
-        return jsonify({'error': f'General Error: {str(e)}'})
+        # Vulnerable: Weak secret and missing expiry check
+        payload = jwt.decode(token, app.config['SECRET_KEY'], algorithms=['HS256'])
+        return jsonify({'message': 'Token valid', 'payload': payload})
+    except jwt.InvalidTokenError:
+        return jsonify({'message': 'Invalid token'}), 401
+
+# Vulnerability: Insecure file upload allowing dangerous file types
+@app.route('/api/upload', methods=['POST'])
+def insecure_upload():
+    if 'file' not in request.files:
+        return jsonify({'message': 'No file provided'}), 400
+
+    file = request.files['file']
+    filename = secure_filename(file.filename)  # Vulnerability: No file type restriction
+    file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+
+    return jsonify({'message': 'File uploaded successfully'})
 
 if __name__ == '__main__':
     if not os.path.exists(app.config['UPLOAD_FOLDER']):
@@ -114,4 +118,4 @@ if __name__ == '__main__':
     with app.app_context():
         db.create_all()
 
-    app.run(debug=True, host='0.0.0.0', port=4000)
+    app.run(debug=True, host='0.0.0.0', port=4000) 
