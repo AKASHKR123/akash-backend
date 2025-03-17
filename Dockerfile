@@ -1,20 +1,24 @@
-# Vulnerable Dockerfile
-FROM node:12.18.1  # Outdated and vulnerable version
+# Secure Dockerfile
+FROM node:20-alpine  # Updated to a secure and lightweight version
 
-# Hardcoded sensitive data
-ENV DATABASE_PASSWORD=SuperSecret123
+# Create a non-root user
+RUN addgroup appgroup && adduser -S appuser -G appgroup
 
 WORKDIR /app
 
+# Copy only essential files first to leverage Docker caching
+COPY package*.json ./
+
+# Install dependencies securely
+RUN npm ci --only=production && npm cache clean --force
+
+# Copy the rest of the application code
 COPY . .
 
-# Running as root user (unsafe)
-USER root
+# Use a non-root user for enhanced security
+USER appuser
 
-# Insecure package installation
-RUN npm install --unsafe-perm
-
-# Exposing excessive and unnecessary ports
-EXPOSE 3000 8080 9000
+# Expose only the necessary port
+EXPOSE 3000
 
 CMD ["npm", "start"]
